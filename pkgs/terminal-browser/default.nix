@@ -14,8 +14,21 @@ let
 
   zenbu-electron = pkgs.callPackage ./electron.nix { };
 
+  # The pnpm store of the workspace, installed with the lock file.
+  # The build materializes node_modules from it, exactly like the
+  # release pipeline (pnpm install, then scripts/release.sh).
+  pnpm-deps = pkgs.fetchPnpmDeps {
+    pname = "terminal-browser";
+    version = source.shortRev;
+    src = source.src;
+    pnpm = pkgs.pnpm_10;
+    fetcherVersion = 4;
+    hash = "sha256-lyN0LoFV24539lziw4rE3x9MxC5zFcRcFlS25+fniOU=";
+  };
+
   terminal-browser = pkgs.callPackage ./terminal-browser.nix {
     inherit source pixel-node agent-browser zenbu-electron;
+    pnpm-deps = pnpm-deps;
   };
 in
 {
@@ -25,4 +38,5 @@ in
   terminalBrowserPixelNode = pixel-node;
   terminalBrowserAgentBrowser = agent-browser;
   terminalBrowserZenbuElectron = zenbu-electron;
+  terminalBrowserPnpmDeps = pnpm-deps;
 }

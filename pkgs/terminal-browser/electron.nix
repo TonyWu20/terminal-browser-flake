@@ -3,8 +3,8 @@
   lib,
   fetchurl,
   unzip,
-  hostPlatform,
-}:
+  # hostPlatform is read from stdenvNoCC (hostPlatform was removed from top level)
+}: 
 
 # The electron distribution that terminal-browser runs.
 #
@@ -13,6 +13,8 @@
 # zip the release script would download, with the checksum from the
 # mirror SHASUMS256.txt at v43.3.0.
 let
+  inherit (stdenvNoCC) hostPlatform;
+
   electronVersion = "43.3.0";
 
   platform =

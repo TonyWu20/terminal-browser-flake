@@ -50,12 +50,29 @@ time.
 
 ## Notes
 
-- The electron dist is a prebuilt binary, so on NixOS the runtime libraries it
-  links (libnss3, gtk, ...) must come from your system profile, exactly as the
-  upstream installer advises.
+- On `x86_64-linux` the launcher wrapper adds the electron runtime
+  libraries (libnss3, gtk3, ...) to `LD_LIBRARY_PATH`, so the app runs on
+  systems without a matching system profile (for example NixOS).
 - On `aarch64-darwin` the build needs the `swift` compiler from nixpkgs
   (prebuilt on cache.nixos.org) plus the system `codesign` from the Xcode
   command line tools.
 - Rebuild after `terminal-browser` moves on main: bump the `rev` in
   `pkgs/terminal-browser/source.nix`, refresh the `hash`, and refresh
   `pkgs/terminal-browser/engine/Cargo.lock` if the lock changed.
+
+## devShell
+
+A development shell with the tools the upstream pipeline uses:
+
+```bash
+nix shell .#x86_64-linux          # nodejs, pnpm 10, rustc, cargo, unzip
+```
+
+## Checks
+
+`checks.<system>.terminal-browser` verifies the dist layout and runs the cli
+bundle under nix node:
+
+```bash
+nix flake check                   # builds the checks for the host system
+```

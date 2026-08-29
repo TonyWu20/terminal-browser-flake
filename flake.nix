@@ -26,5 +26,54 @@
       overlays.default = final: prev: import ./pkgs/terminal-browser/default.nix final;
 
       packages = nixpkgs.lib.genAttrs systems mkPackages;
+
+      # Shell with the tools the upstream build pipeline uses (pnpm,
+      # rust, node, unzip), for working on this package.
+      devShells = nixpkgs.lib.genAttrs systems (system:
+        let
+          pkgs = nixpkgs.legacyPackages.${system};
+        in
+        {
+          default = pkgs.mkShell {
+            packages = [
+              pkgs.nodejs
+              pkgs.pnpm_10
+              pkgs.rustc
+              pkgs.cargo
+              pkgs.unzip
+            ];
+          };
+        });
+
+      # Smoke test: checks the dist layout and runs the cli bundle under
+      # nix node. The cli bundle only uses node:* builtins, so no electron
+      # binary is needed. This keeps the check sandbox-safe on both target
+      # platforms.
+      checks = nixpkgs.lib.genAttrs systems (system:
+        let
+          pkg = nixpkgs.legacyPackages.${system};
+          tb = self.packages.${system}."terminal-browser";
+        in
+        {
+          "terminal-browser" = pkg.stdenvNoCC.mkDerivation (finalAttrs: {
+            pname = "terminal-browser-check";
+            version = "0";
+            buildInputs = [ tb ];
+            nativeBuildInputs = [ pkg.nodejs ];
+            dontUnpack = true;
+            dontConfigure = true;
+            dontBuild = true;
+            installPhase = ''
+              mkdir -p $out
+              # The dist tree must match the release tarball layout.
+              for f in "${tb}"/bin/terminal-browser "${tb}"/cli/dist/main.js "${tb}"/browser/dist/main.js "${tb}"/browser/native/pixel.node "${tb}"/agent-browser/bin/agent-browser "${tb}"/VERSION "${tb}"/CHANNEL; do
+                [ -e "$f" ] || { echo "missing: $f" >&2; exit 1; }
+              done
+              # The launcher wrapper sets the dist root env var for the cli.
+              export TERMINAL_BROWSER_DIST_ROOT="${tb}"
+              node "${tb}"/cli/dist/main.js --version | grep -q "terminal-browser"
+            '';
+          });
+        });
     };
 }

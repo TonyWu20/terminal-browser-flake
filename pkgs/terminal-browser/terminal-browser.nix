@@ -2,17 +2,44 @@
   stdenvNoCC,
   lib,
   nodejs,
-  esbuild,
+  pnpm_10,
+  pnpmConfigHook,
+  makeBinaryWrapper,
+  bash,
   source,
   pixel-node,
   agent-browser,
   zenbu-electron,
-  hostPlatform,
-  # Darwin only (lazy, never evaluated on Linux):
-  swift,
-  apple-sdk,
-  "re-plistbuddy",
-}:
+  pnpm-deps,
+  # Darwin only; never evaluated on Linux.
+  swift ? null,
+  apple-sdk ? null,
+  re-plistbuddy ? null,
+  # Linux only; never evaluated on Darwin.
+  glib ? null,
+  nss ? null,
+  nspr ? null,
+  at-spi2-core ? null,
+  cups ? null,
+  dbus ? null,
+  cairo ? null,
+  gtk3 ? null,
+  pango ? null,
+  expat ? null,
+  libxcb ? null,
+  xkbcommon ? null,
+  udev ? null,
+  alsa-lib ? null,
+  icu ? null,
+  libgbm ? null,
+  libX11 ? null,
+  libXcomposite ? null,
+  libXdamage ? null,
+  libXext ? null,
+  libXfixes ? null,
+  libXrandr ? null,
+  gcc-unwrapped ? null,
+}: 
 
 # Assembles the terminal-browser dist tree, mirroring scripts/release.sh.
 #
@@ -25,14 +52,49 @@
 #   agent-browser/bin/agent-browser
 #   assets/fonts/  scripts/  skills/
 #   VERSION  CHANNEL
+let
+  inherit (stdenvNoCC) hostPlatform;
+
+  # The electron dist is a prebuilt binary. It links against the usual
+  # desktop runtime libraries. The launcher wrapper adds them to
+  # LD_LIBRARY_PATH so the app runs on systems without a system profile
+  # (for example NixOS). The upstream installer lists the same set.
+  electronRuntimeLibs = lib.optionalAttrs hostPlatform.isLinux ([
+    glib # glib-2.0, gobject-2.0, gio-2.0
+    nss # nss3, nssutil3, smime3
+    nspr # nspr4
+    at-spi2-core # atk-1.0, atk-bridge-2.0, atspi
+    cups
+    dbus
+    cairo
+    gtk3 # gtk-3, gdk-3
+    pango
+    expat
+    libxcb
+    xkbcommon
+    udev # libudev
+    alsa-lib
+    icu
+    libgbm
+    libX11
+    libXcomposite
+    libXdamage
+    libXext
+    libXfixes
+    libXrandr
+    gcc-unwrapped # libstdc++
+  ]);
+
+in
 stdenvNoCC.mkDerivation (finalAttrs: {
   pname = "terminal-browser";
   version = source.shortRev;
 
   inherit (source) src;
 
-  nativeBuildInputs = [ nodejs esbuild ]
-    ++ lib.optionals hostPlatform.isDarwin [ swift apple-sdk re-plistbuddy ];
+  nativeBuildInputs = [ nodejs pnpm_10 pnpmConfigHook ]
+    ++ lib.optionals hostPlatform.isDarwin [ swift apple-sdk re-plistbuddy ]
+    ++ lib.optionals hostPlatform.isLinux [ makeBinaryWrapper ];
 
   buildInputs = [
     pixel-node
@@ -40,42 +102,35 @@ stdenvNoCC.mkDerivation (finalAttrs: {
     zenbu-electron
   ];
 
-  # No configure/build phase: everything is done in installPhase so the
-  # derivation mirrors scripts/release.sh step by step.
-  dontConfigure = true;
+  # Materialize node_modules from the pnpm store, like the release pipeline.
+  pnpmDeps = pnpm-deps;
+
+  # The pnpm config hook (post-configure) materializes node_modules from
+  # the pnpm store. The build phase is unused: installPhase does everything,
+  # mirroring scripts/release.sh step by step.
   dontBuild = true;
 
   installPhase = ''
     set -e
 
+    # The repo scripts use a /bin/bash shebang, which the build sandbox
+    # does not have. Point them at the build bash instead.
+    substituteInPlace scripts/*.sh --replace-fail "#!/bin/bash" "#!${bash}/bin/bash"
+
     mkdir -p $out/{bin,cli/dist,browser/dist,browser/native,agent-browser/bin,assets/fonts,scripts,skills}
 
     # rust engine native module (cdylib, renamed to pixel.node)
-    cp ${pixel-node}/lib/libpixel_node.${lib.optionalString hostPlatform.isDarwin "dylib" "so"} \
+    cp ${pixel-node}/lib/libpixel_node.${if hostPlatform.isDarwin then "dylib" else "so"} \
       $out/browser/native/pixel.node
 
     # agent-browser native cli
     cp ${agent-browser}/bin/agent-browser $out/agent-browser/bin/agent-browser
 
-    # bundle cli and browser with esbuild (same flags as scripts/bundle.sh)
-    bundle() {
-      ${esbuild}/bin/esbuild "$1" \
-        --bundle --platform=node --format=cjs \
-        --external:electron "--external:*.node" \
-        "--alias:pixel-react=$PWD/engine/packages/pixel-react/src/index.ts" \
-        "--alias:pixel-terminals=$PWD/terminals/src/index.ts" \
-        "--alias:pixel-store=$PWD/store/src/index.ts" \
-        "--define:process.env.NODE_ENV=\"production\"" \
-        --sourcemap --outfile "$2" --log-level=warning
-      printf '{"type":"commonjs"}\n' > "$(dirname "$2")/package.json"
-    }
-    bundle "$PWD/cli/src/main.ts" "$out/cli/dist/main.js"
-    bundle "$PWD/browser/src/main.tsx" "$out/browser/dist/main.js"
+    # bundle cli and browser (scripts/bundle.sh runs node_modules/.bin/esbuild)
+    bash scripts/bundle.sh "$PWD/cli/src/main.ts" "$out/cli/dist/main.js"
+    bash scripts/bundle.sh "$PWD/browser/src/main.tsx" "$out/browser/dist/main.js"
 
-    # generate the agent skills (scripts/generate-skill.sh calls
-    # node_modules/.bin/esbuild, so point it at the esbuild binary)
-    mkdir -p node_modules/.bin
-    ln -s ${esbuild}/bin/esbuild node_modules/.bin/esbuild
+    # generate the agent skills (same as scripts/release.sh)
     bash scripts/generate-skill.sh
     cp -R skill/build $out/skills
 
@@ -85,8 +140,8 @@ stdenvNoCC.mkDerivation (finalAttrs: {
       cp -a ${zenbu-electron}/. $out/electron/
     ''}
     ${lib.optionalString hostPlatform.isDarwin ''
-      # the engine bakes in a path to its build directory, so the swift helper
-      # is compiled on the target host (same as scripts/release.sh)
+      # the engine bakes in a build-directory path, so the swift helper
+      # compiles on the target host (same as scripts/release.sh)
       ${swift}/bin/swiftc -O -target arm64-apple-macos11 \
         engine/crates/pixel-core/native-scroll-helper.swift \
         -o $out/bin/native-scroll-helper
@@ -125,7 +180,7 @@ stdenvNoCC.mkDerivation (finalAttrs: {
       ROOT="$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd -P)"
       export TERMINAL_BROWSER_DIST_ROOT="$ROOT"
       export ELECTRON_RUN_AS_NODE=1
-      export NATIVE_SCROLL_HELPER="\${NATIVE_SCROLL_HELPER:-$ROOT/bin/native-scroll-helper}"
+      export NATIVE_SCROLL_HELPER="${"$"}{NATIVE_SCROLL_HELPER:-$ROOT/bin/native-scroll-helper}"
       exec "$ROOT/electron/terminal-browser.app/Contents/MacOS/terminal-browser" "$ROOT/cli/dist/main.js" "$@"
       WRAPPER
     ''}
@@ -134,6 +189,13 @@ stdenvNoCC.mkDerivation (finalAttrs: {
     # what the dist reports itself as (scripts/upgrade.ts reads these)
     echo "main-${source.shortRev}" > $out/VERSION
     echo "dev" > $out/CHANNEL
+  '';
+
+  # The electron dist is a prebuilt binary. The launcher wrapper points it at
+  # the nix-provided runtime libraries (linux only; darwin uses system frameworks).
+  postFixup = lib.optionalString hostPlatform.isLinux ''
+    wrapProgram $out/bin/terminal-browser \
+      --prefix LD_LIBRARY_PATH ":" "${lib.makeLibraryPath electronRuntimeLibs}"
   '';
 
   meta = {
@@ -147,6 +209,6 @@ stdenvNoCC.mkDerivation (finalAttrs: {
   };
 
   passthru = {
-    inherit source pixel-node agent-browser zenbu-electron;
+    inherit source pixel-node agent-browser zenbu-electron pnpm-deps;
   };
 })

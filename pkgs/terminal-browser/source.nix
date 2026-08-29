@@ -12,6 +12,6 @@ in
   src = fetchgit {
     url = "https://github.com/zenbu-labs/terminal-browser";
     inherit rev;
-    hash = "sha256-TODO";
+    hash = "sha256-4c4LfSK8Zn3iO0NMK3aTSXGKYu1X4EsqrIepcIhpxpo=";
   };
 }

@@ -17,7 +17,7 @@ rustPlatform.buildRustPackage {
   src = fetchgit {
     url = "https://github.com/vercel-labs/agent-browser";
     inherit rev;
-    hash = "sha256-TODO";
+    hash = "sha256-praWvAgWoDmWqXzh/kxdfQAPGkVS4qkb0pPYtMWO/N8=";
   };
 
   # The crate lives in the cli/ subdirectory of the repo.
