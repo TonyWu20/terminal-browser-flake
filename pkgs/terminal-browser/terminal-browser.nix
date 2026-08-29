@@ -13,6 +13,7 @@
   pnpm-deps,
   # Darwin only; never evaluated on Linux.
   swift ? null,
+  clang ? null,
   apple-sdk ? null,
   re-plistbuddy ? null,
   # Linux only; never evaluated on Darwin.
@@ -92,8 +93,12 @@ stdenvNoCC.mkDerivation (finalAttrs: {
 
   inherit (source) src;
 
+  # The clang package is the cc-wrapper. Its setup hook exports NIX_CC.
+  # The swift wrapper's setup hook reads NIX_CC in a post-hook.
+  # stdenvNoCC sets no NIX_CC, so the build dies with
+  # "NIX_CC: unbound variable" without the clang input.
   nativeBuildInputs = [ nodejs pnpm_10 pnpmConfigHook ]
-    ++ lib.optionals hostPlatform.isDarwin [ swift apple-sdk re-plistbuddy ]
+    ++ lib.optionals hostPlatform.isDarwin [ swift clang apple-sdk re-plistbuddy ]
     ++ lib.optionals hostPlatform.isLinux [ makeBinaryWrapper ];
 
   buildInputs = [
@@ -145,10 +150,14 @@ stdenvNoCC.mkDerivation (finalAttrs: {
       ${swift}/bin/swiftc -O -target arm64-apple-macos11 \
         engine/crates/pixel-core/native-scroll-helper.swift \
         -o $out/bin/native-scroll-helper
-      codesign --force --sign - --timestamp=none $out/bin/native-scroll-helper || true
-      codesign --force --sign - --timestamp=none $out/agent-browser/bin/agent-browser || true
+      # codesign ships in the system command line tools, not the build PATH.
+      /usr/bin/codesign --force --sign - --timestamp=none $out/bin/native-scroll-helper || true
+      /usr/bin/codesign --force --sign - --timestamp=none $out/agent-browser/bin/agent-browser || true
 
       cp -a ${zenbu-electron}/Electron.app $out/electron/terminal-browser.app
+      # cp -a keeps the store read-only modes. The rename below needs
+      # writable directories, so restore the owner write bit first.
+      chmod -R u+w $out/electron/terminal-browser.app
       mv $out/electron/terminal-browser.app/Contents/MacOS/Electron \
          $out/electron/terminal-browser.app/Contents/MacOS/terminal-browser
       ${lib.getExe' re-plistbuddy "PlistBuddy"} \
@@ -157,7 +166,7 @@ stdenvNoCC.mkDerivation (finalAttrs: {
         -c "Set :CFBundleDisplayName terminal-browser" \
         -c "Set :CFBundleIdentifier dev.zenbu.terminal-browser" \
         $out/electron/terminal-browser.app/Contents/Info.plist
-      codesign --force --sign - --timestamp=none $out/electron/terminal-browser.app
+      /usr/bin/codesign --force --sign - --timestamp=none $out/electron/terminal-browser.app
     ''}
 
     # support files
