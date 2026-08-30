@@ -72,6 +72,17 @@
               # The launcher wrapper sets the dist root env var for the cli.
               export TERMINAL_BROWSER_DIST_ROOT="${tb}"
               node "${tb}"/cli/dist/main.js --version | grep -q "terminal-browser"
+              # The unified user environment keeps only bin/. The launcher
+              # must carry the embedded dist root for that case.
+              grep -q "${tb}" "${tb}/bin/terminal-browser"
+              ${nixpkgs.lib.optionalString (pkg.stdenv.hostPlatform.isDarwin) ''
+                # darwin: the app links system frameworks, so the wrapper
+                # runs standalone. Run it from a location without the dist
+                # layout, as the unified user environment does.
+                mkdir launcher-test
+                cp "${tb}/bin/terminal-browser" launcher-test/terminal-browser
+                sh launcher-test/terminal-browser --version | grep -q "terminal-browser"
+              ''}
             '';
           });
         });

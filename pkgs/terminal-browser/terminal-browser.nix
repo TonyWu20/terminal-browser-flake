@@ -56,6 +56,11 @@
 let
   inherit (stdenvNoCC) hostPlatform;
 
+  # The store path of this output. The unified user environment keeps
+  # only bin/, so the launcher falls back to this embedded path when
+  # the dist root next to bin/ does not exist.
+  distRoot = "${placeholder "out"}";
+
   # The electron dist is a prebuilt binary. It links against the usual
   # desktop runtime libraries. The launcher wrapper adds them to
   # LD_LIBRARY_PATH so the app runs on systems without a system profile
@@ -173,11 +178,22 @@ stdenvNoCC.mkDerivation (finalAttrs: {
     cp scripts/apparmor.sh $out/scripts/apparmor.sh
     cp assets/fonts/JetBrainsMono-Regular.ttf $out/assets/fonts/
 
-    # launcher wrapper (same as scripts/release.sh generates)
+    # launcher wrapper (same layout as scripts/release.sh generates)
     ${lib.optionalString hostPlatform.isLinux ''
       cat > $out/bin/terminal-browser <<'WRAPPER'
       #!/bin/sh
-      ROOT="$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd -P)"
+      # The relative dist root works for the store path and for unpacked
+      # copies. The unified user environment keeps only bin/, so fall
+      # back to the dist root embedded at build time.
+      REL="$(CDPATH= cd -- "$(dirname -- "$0")/.." 2>/dev/null && pwd -P)"
+      ROOT="$TERMINAL_BROWSER_DIST_ROOT"
+      if [ -z "$ROOT" ]; then
+        if [ -d "$REL/electron" ]; then
+          ROOT="$REL"
+        else
+          ROOT="${distRoot}"
+        fi
+      fi
       export TERMINAL_BROWSER_DIST_ROOT="$ROOT"
       export ELECTRON_RUN_AS_NODE=1
       exec "$ROOT/electron/electron" "$ROOT/cli/dist/main.js" "$@"
@@ -186,7 +202,18 @@ stdenvNoCC.mkDerivation (finalAttrs: {
     ${lib.optionalString hostPlatform.isDarwin ''
       cat > $out/bin/terminal-browser <<'WRAPPER'
       #!/bin/sh
-      ROOT="$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd -P)"
+      # The relative dist root works for the store path and for unpacked
+      # copies. The unified user environment keeps only bin/, so fall
+      # back to the dist root embedded at build time.
+      REL="$(CDPATH= cd -- "$(dirname -- "$0")/.." 2>/dev/null && pwd -P)"
+      ROOT="$TERMINAL_BROWSER_DIST_ROOT"
+      if [ -z "$ROOT" ]; then
+        if [ -d "$REL/electron" ]; then
+          ROOT="$REL"
+        else
+          ROOT="${distRoot}"
+        fi
+      fi
       export TERMINAL_BROWSER_DIST_ROOT="$ROOT"
       export ELECTRON_RUN_AS_NODE=1
       export NATIVE_SCROLL_HELPER="${"$"}{NATIVE_SCROLL_HELPER:-$ROOT/bin/native-scroll-helper}"
