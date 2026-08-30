@@ -22,10 +22,13 @@ let
 
   # Verified against
   # https://github.com/zenbu-labs/electron-releases/releases/download/v43.3.0/SHASUMS256.txt
+  # Upstream can re-publish the release assets of a fixed tag. When that
+  # happens, the download bytes change and this pin must be refreshed.
+  # (The darwin zips of v43.3.0 were re-published on 2026-08-30.)
   sha256 = (
     {
       linux-x64 = "cda5b298b9450c9b9a080dddf3b79fb7f15a8cd01e6de8fe4b26a19d12ef892f";
-      darwin-arm64 = "79523ea9fd0ead084bd53125eff353f63c0f418e8df561c2d008c59af12ab20c";
+      darwin-arm64 = "92373642b9c425e004ee99cbd95f555da4885ca9e619a7013194fead56e4a987";
     }
   )."${platform}";
 in
