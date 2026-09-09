@@ -35,6 +35,27 @@ nix profile add .#x86_64-linux
 The overlay also exposes the components: `terminalBrowserPixelNode`,
 `terminalBrowserAgentBrowser`, `terminalBrowserZenbuElectron`.
 
+## Pi extension
+
+A [pi](https://github.com/earendil-works/pi) agent extension for
+[terminal-browser](https://github.com/zenbu-labs/terminal-browser) is
+maintained in a separate repository:
+
+- [TonyWu20/pi-terminal-browser](https://github.com/TonyWu20/pi-terminal-browser)
+
+It provides `tb_fetch` (URL to agent-readable text), `tb_browser` (raw
+agent-browser commands), and `tb_shutdown` (stop the session and daemon).
+
+```bash
+pi install git:github.com/TonyWu20/pi-terminal-browser
+```
+
+The upstream source repo ships skill documents for the claude, codex,
+cursor, and gemini agents (`skill/` in the source tree, generated into the
+dist `skills/` dir); no pi variant exists yet, so this extension is the pi
+entry point. See the pi-terminal-browser README for the full protocol,
+the one-session-per-daemon rule, and the bot-challenge behavior.
+
 ## Pins
 
 | component | source |
